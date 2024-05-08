@@ -19,3 +19,5 @@
  *
  */
 extern char *expand(char **word);
+extern char *expand_prompt(char **word);
+

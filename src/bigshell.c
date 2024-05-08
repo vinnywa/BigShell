@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include "exit.h"
+#include "params.h"
 #include "parser.h"
 #include "runner.h"
 #include "signal.h"
@@ -21,39 +22,61 @@
 int
 main(int argc, char *argv[])
 {
-  signal_init();
-  for (;;) {
-    if (wait_on_bg_jobs() < 0) err(1, 0);
+  struct command_list *cl = 0;
 
-    struct command_list *cl = 0;
-    signal_enable_interrupt(SIGINT);
+  /* Program initialization routines */
+  if (signal_init() < 0) goto err;
+
+  /* Main Event Loop: REPL -- Read Evaluate Print Loop */
+  for (;;) {
+prompt:
+    /* Check on backround jobs */
+    if (wait_on_bg_jobs() < 0) goto err;
+
+    /* Read input and parse it into a list of commands */
+    if (signal_enable_interrupt(SIGINT) < 0) goto err;
     int res = command_list_parse(&cl, stdin);
-    signal_ignore(SIGINT);
-    if (res < 0) {
-      if (errno == EINTR) {
-        clearerr(stdin);
-        errno = 0;
-        fputc('\n', stderr);
-        continue;
+    if (signal_ignore(SIGINT) < 0) goto err;
+
+    if (res == -1) { /* System library errors */
+      switch (errno) { /* Handle specific errors */
+        case EINTR:
+          clearerr(stdin);
+          errno = 0;
+          fputc('\n', stderr);
+          goto prompt;
+        default:
+          goto err; /* Unrecoverable errors */
       }
-      /* Syntax error during parsing */
+    } else if (res < 0) { /* Parser syntax errors */
       fprintf(stderr, "Syntax error: %s\n", command_list_strerror(res));
-      continue;
-    } else if (res == 0) {
-      /* Parsed empty line. If it's because of feof(), exit */
-      if (feof(stdin)) bigshell_exit();
-      /* otherwise it's just a blank line, continue. */
+      errno = 0;
+      goto prompt;
+    } else if (res == 0) { /* No commands parsed */
+      if (feof(stdin)) bigshell_exit(); /* Exit on eof */
+      goto prompt; /* Blank line */
     } else {
-#ifndef NDEBUG
       gprintf("Parsed command list to execute:");
+#ifndef NDEBUG
       command_list_print(cl, stderr);
       fputc('\n', stderr);
 #endif
       gprintf("executing command list with %zu commands", cl->command_count);
-      /* Command-list produced */
+
+      /* Execute commands */
       run_command_list(cl);
+
+      /* Cleanup */
       command_list_free(cl);
       free(cl);
+      cl = 0;
     }
   }
+
+err:
+  if (cl) command_list_free(cl);
+  free(cl);
+  params.status = 127;
+  warn(0);
+  bigshell_exit();
 }

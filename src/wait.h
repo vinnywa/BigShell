@@ -6,7 +6,7 @@
  * 
  * @returns 0 on success, -1 on failure
  */
-int wait_on_fg_gid(gid_t gid);
+int wait_on_fg_gid(pid_t pgid);
 
 /** Place a job  in the foreground and wait on it 
  *

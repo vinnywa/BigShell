@@ -42,7 +42,7 @@ expand_command_words(struct command *cmd)
   for (size_t i = 0; i < cmd->word_count; ++i) {
     expand(&cmd->words[i]);
   }
-  /* TODO Assignments */
+  /* TODO Assignment values */
   /* TODO I/O Filenames */
   return 0;
 }
@@ -250,9 +250,7 @@ do_builtin_io_redirects(struct command *cmd, struct builtin_redir **redir_list)
     }
     if (0) {
     err:
-      warn(0);
       status = -1;
-      errno = 0;
     }
   }
   return status;
@@ -332,9 +330,7 @@ do_io_redirects(struct command *cmd)
     }
     if (0) {
     err: /* TODO Anything that can fail should jump here. No silent errors!!! */
-      warn(0);
       status = -1;
-      errno = 0;
     }
   }
   return status;
@@ -346,7 +342,9 @@ run_command_list(struct command_list *cl)
   /* Declared here to preserve value across successive pipelined commands
    *  -1 means no pipe */
   int pipeline_fds[2] = {-1, -1};
-  gid_t pipeline_gid = -1; /* Group id of current pipeline. -1 == unset */
+  pid_t pipeline_pgid = 0; /* Process group id of current pipeline.
+                              0 == unset */
+  jid_t pipeline_jid = -1; /* Job id of current pipeline. -1 == unset */
 
   for (size_t i = 0; i < cl->command_count; ++i) {
     struct command *cmd = cl->commands[i];
@@ -374,13 +372,13 @@ run_command_list(struct command_list *cl)
     // on.
     // clang-format on
 
-    int is_pl = cmd->ctrl_op == '|'; /* pipeline */
-    int is_bg = cmd->ctrl_op == '&'; /* background */
-    int is_fg = cmd->ctrl_op == ';'; /* foreground */
-    assert(is_pl || is_bg || is_fg); /* catch any parser errors */
+    int const is_pl = cmd->ctrl_op == '|'; /* pipeline */
+    int const is_bg = cmd->ctrl_op == '&'; /* background */
+    int const is_fg = cmd->ctrl_op == ';'; /* foreground */
+    assert(is_pl || is_bg || is_fg);       /* catch any parser errors */
 
     /* Grab the READ side of the pipeline from the previous command */
-    int stdin_override = pipeline_fds[0];
+    int stdin_override = pipeline_fds[STDIN_FILENO];
 
     /* IF we are a pipeline command, create a pipe for our stdout */
     if (/* TODO */ 0) {
@@ -392,7 +390,7 @@ run_command_list(struct command_list *cl)
     }
 
     /* Grab the WRITE side of the pipeline we just created */
-    int stdout_override = pipeline_fds[1];
+    int stdout_override = pipeline_fds[STDOUT_FILENO];
 
     /* Check if we have a builtin -- returns a function pointer if we do, null
      * if we don't */
@@ -408,9 +406,8 @@ run_command_list(struct command_list *cl)
     }
 
     if (child_pid == 0) {
-      /* If we are a builtin */
       if (builtin) {
-
+        /* If we are a builtin */
         /* Set up the redir_list for virtual redirection */
         struct builtin_redir *redir_list = 0;
 
@@ -449,11 +446,12 @@ run_command_list(struct command_list *cl)
 
         params.status = result ? 127 : 0;
         /* If we forked, exit now */
-        if (is_bg) exit(params.status);
+        if (!is_fg) exit(params.status);
 
         /* Otherwise, we are running in the current shell and
-         * need to clean up */
+         * need to clean up before falling through */
         errno = 0;
+        continue; /* Skip remaining job-control related stuff */
       } else {
         /* External command */
 
@@ -486,58 +484,62 @@ run_command_list(struct command_list *cl)
         assert(0);   /* UNREACHABLE -- This should never be reached ABORT! */
       }
     }
+    assert(child_pid > 0);
     if (stdout_override >= 0) close(stdout_override);
     if (stdin_override >= 0) close(stdin_override);
 
-    /* All of the processes in a pipeline (or single command) belong to the same
-     * process group. This is how the shell manages job control. We will create
-     * that here */
+    /* XXX All of the processes in a pipeline (or single command) belong to the
+     * same process group. This is how the shell manages job control. We will
+     * create that here, or add the current child to an existing process group
+     */
 
-    /* XXX initially pipeline_gid is set to -1 (unset) */
-    if (pipeline_gid < 0) {
-      /* TODO child will become process group leader. Assign it to its own
-       * process group, where its pid equals its process group id. See
-       * SETPGID(3) */
-      /* TODO Record process group id with pipeline_gid. */
-      /* XXX NOTE: pay very close attention to the return value of setpgid.
-       * You'll probably want to call getpgid()... :) */
-
-      /* TODO Add the new group id to the job list. See jobs.h */
-      jid_t job_id;
+    /* XXX initially pipeline_gid is set to 0 (unset)
+     *
+     * Thoroughly read the man page for setpgid(3) and getpgid(3)
+     *
+     * What will be the effect of the following call when,
+     *
+     * 1) pipeline_pgid == 0, and
+     * 2) pipeline_pgid != 0
+     */
+    if (setpgid(child_pid, pipeline_pgid) < 0) goto err;
+    if (pipeline_pgid == 0) {
+      /* Start of a new pipeline */
+      assert(child_pid == getpgid(child_pid)); /* XXX How do we know this? */
+      pipeline_pgid = child_pid;
+      pipeline_jid = jobs_add(pipeline_pgid);
+      if (pipeline_jid < 0) goto err;
     }
 
     /* Whether the parent waits on the child is dependent on the control
      * operator */
     if (is_fg) {
-      if (wait_on_fg_gid(pipeline_gid) < 0) {
+      if (wait_on_fg_gid(pipeline_pgid) < 0) {
         warn(0);
         params.status = 127;
         return -1;
       }
-      /* reset the stdin/stdout fds and pipeline gid for the next command
-       * that's not a part of this command's pipeline */
-      stdin_override = STDIN_FILENO;
-      stdout_override = STDOUT_FILENO;
-      pipeline_gid = -1;
     } else {
+      /* Background or Pipeline */
       params.bg_pid = child_pid;
 
       if (is_bg) {
-        /* Background '&' commands print a little message when they spawn.
-         * TODO "[<JOBID>] <GROUPID>\n"
-         *
-         * XXX a Jobid is assigned when the first command in a pipeline runs.
-         *
-         * How can you get the job id of this process, if it's not the first
-         * command? see: jobs_get_jid()
-         *
-         * Or, perhaps, store it in a variable outside the loop, for the current
-         * pipeline.
-         *
-         * Up to you :)
+        /* Pipelines that end with a background (&) command print a little
+         * message when they spawn.
+         * "[<JOBID>] <GROUPID>\n"
          */
-        fprintf(stderr, "[%jd] %jd\n", (intmax_t)-1, (intmax_t)-1);
+        fprintf(stderr,
+                "[%jd] %jd\n",
+                (intmax_t)pipeline_jid,
+                (intmax_t)pipeline_pgid);
       }
+      params.status =
+          0; /* XXX Ignore the spec--this is correct for background jobs */
+    }
+
+    /* Cleanup after non-pipeline cmds */
+    if (!is_pl) {
+      pipeline_pgid = 0;
     }
   }
 

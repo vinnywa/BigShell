@@ -20,52 +20,57 @@ jobs_get_joblist_size(void)
 }
 
 jid_t
-jobs_add(gid_t gid)
+jobs_add(pid_t pgid)
 {
-  if (jobs_get_jid(gid) >= 0) return -1;
+  /* Allocate space for a new job record */
+  if (jobs_get_jid(pgid) >= 0) return -1;
   void *tmp =
       realloc(jobs_joblist, sizeof *jobs_joblist * (jobs_joblist_size + 1));
   if (!tmp) return -1;
   jobs_joblist = tmp;
-  jid_t jid = 0;
+
   /* Find lowest unused jobid */
+  jid_t jid = 0;
   size_t insert_at = 0;
   for (; insert_at < jobs_joblist_size; ++insert_at) {
     if (jid < jobs_joblist[insert_at].jid) break;
     jid = jobs_joblist[insert_at].jid + 1;
   }
+
+  /* Keep the list sorted */
   memmove(&jobs_joblist[insert_at + 1],
           &jobs_joblist[insert_at],
           sizeof *jobs_joblist * (jobs_joblist_size - insert_at));
 
-  jobs_joblist[insert_at] = (struct job){.jid = jid, .gid = gid};
+  /* Assign members to new entry */
+  jobs_joblist[insert_at] = (struct job){.jid = jid, .pgid = pgid};
   ++jobs_joblist_size;
   return jid;
 }
 
 jid_t
-jobs_get_jid(gid_t gid)
+jobs_get_jid(pid_t pgid)
 {
   for (size_t i = 0; i < jobs_joblist_size; ++i) {
-    if (jobs_joblist[i].gid == gid) return jobs_joblist[i].jid;
+    if (jobs_joblist[i].pgid == pgid) return jobs_joblist[i].jid;
   }
   return -1; /* DNE */
 }
 
-gid_t
+pid_t
 jobs_get_gid(jid_t jid)
 {
   for (size_t i = 0; i < jobs_joblist_size; ++i) {
-    if (jobs_joblist[i].jid == jid) return jobs_joblist[i].gid;
+    if (jobs_joblist[i].jid == jid) return jobs_joblist[i].pgid;
   }
   return -1; /* DNE */
 }
 
 int
-jobs_remove_gid(gid_t gid)
+jobs_remove_gid(pid_t pgid)
 {
   for (size_t i = 0; i < jobs_joblist_size;) {
-    if (jobs_joblist[i].gid == gid) {
+    if (jobs_joblist[i].pgid == pgid) {
       memmove(&jobs_joblist[i],
               &jobs_joblist[i + 1],
               sizeof *jobs_joblist * (jobs_joblist_size - i - 1));
@@ -92,7 +97,8 @@ jobs_remove_jid(jid_t jobid)
   return jobs_remove_gid(jobs_get_gid(jobid));
 }
 
-void jobs_cleanup(void)
+void
+jobs_cleanup(void)
 {
   free(jobs_joblist);
   jobs_joblist = 0;

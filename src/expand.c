@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <ctype.h>
 #include <err.h>
+#include <limits.h>
 #include <pwd.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -20,6 +21,14 @@
 #include "vars.h"
 
 #include "expand.h"
+
+static char *
+strchrnul(char const *s, int c)
+{
+  for (; *s && *s != c; ++s)
+    ;
+  return (char *)s;
+}
 
 static char *
 expand_substr(char **word, char **start, char **stop, char const *expansion)
@@ -90,7 +99,7 @@ find_unquoted(char const *haystack, int needle)
     }
 
     if (*c == '\'') {
-      c = strchr(c + 1, '\'');
+      c = strchrnul(c + 1, '\'');
       continue;
     }
     if (*c == '\"') {
@@ -113,64 +122,67 @@ find_unquoted(char const *haystack, int needle)
 static char *
 expand_parameters(char **word)
 {
-  char *c = *word;
-  char *w = 0;
+  char *scan = *word;
+  char *w = *word;
   for (;;) {
-    c = find_unquoted(c, '$');
-    if (!c) return *word;
-    char *expand_start = c;
-    ++c;
+    scan = find_unquoted(scan, '$');
+    if (!scan) break;
+
+    char *expand_start = scan;
+    ++scan;
     char *param;
-    if (*c == '$') {
-      ++c;
+    if (*scan == '$') {
+      ++scan;
       char *val = 0;
       asprintf(&val, "%jd", (intmax_t)getpid());
       if (val) {
-        w = expand_substr(word, &expand_start, &c, val);
+        w = expand_substr(word, &expand_start, &scan, val);
         free(val);
       }
-    } else if (*c == '!') {
-      ++c;
+    } else if (*scan == '!') {
+      ++scan;
       char *val = 0;
       asprintf(&val, "%jd", (intmax_t)params.bg_pid);
       if (val) {
-        w = expand_substr(word, &expand_start, &c, val);
+        w = expand_substr(word, &expand_start, &scan, val);
         free(val);
       }
-      ++c;
-    } else if (*c == '?') {
-      ++c;
+      ++scan;
+    } else if (*scan == '?') {
+      ++scan;
       char *val = 0;
       asprintf(&val, "%d", params.status);
       if (val) {
-        w = expand_substr(word, &expand_start, &c, val);
+        w = expand_substr(word, &expand_start, &scan, val);
         free(val);
       }
-      ++c;
+      ++scan;
     } else {
-      if (*c == '{') {
-        param = c + 1;
-        for (; *c && *c != '}'; ++c)
+      if (*scan == '{') {
+        param = scan + 1;
+        for (; *scan && *scan != '}'; ++scan)
           ;
-        if (*c != '}') return *word;
-        param = strndup(param, c - param);
-        ++c;
+        if (*scan != '}') return *word;
+        param = strndup(param, scan - param);
+        ++scan;
         if (!param) err(1, 0);
       } else {
-        param = c;
-        for (; *c && (isalpha(*c) || isdigit(*c) || *c == '_'); ++c)
+        param = scan;
+        for (; *scan && (isalpha(*scan) || isdigit(*scan) || *scan == '_');
+             ++scan)
           ;
-        param = strndup(param, c - param);
+        param = strndup(param, scan - param);
         if (!param) err(1, 0);
       }
 
-      char *expand_end = c;
+      char *expand_end = scan;
       char const *val = vars_get(param);
       if (!val) val = "";
       w = expand_substr(word, &expand_start, &expand_end, val);
-      c = expand_end;
+      scan = expand_end;
       free(param);
     }
+    if (!w) break;
   }
   return w;
 }
@@ -220,4 +232,94 @@ expand(char **word)
   if (!expand_tilde(word) || !expand_parameters(word) || !remove_quotes(word))
     return 0;
   return *word;
+}
+
+static char *
+remove_prefix(char const *s, char const *pre)
+{
+  char const *scan = s;
+  for (; *pre && *pre == *scan; ++scan, ++pre)
+    ;
+  if (!*pre) s = scan;
+  return (char *)s;
+}
+
+/* XXX DO NOT MODIFY */
+char *
+expand_prompt(char **prompt)
+{
+  char *p = *prompt;
+  p = expand_parameters(prompt);
+  if (!p) return 0;
+  for (char *start = *prompt; *(start = strchrnul(start, '\\'));) {
+    char *stop = start + 2;
+    switch (start[1]) {
+      case 'a':
+        p = expand_substr(prompt, &start, &stop, "\a");
+        break;
+      case 'd':
+      case 'D':
+        /* Not implemented */
+        break;
+      case 'e':
+        p = expand_substr(prompt, &start, &stop, "\033");
+        break;
+      case 'h': {
+        char hn[HOST_NAME_MAX + 1] = {0};
+        if (gethostname(hn, HOST_NAME_MAX + 1) == 0) {
+          *strchrnul(hn, '.') = '\0';
+          p = expand_substr(prompt, &start, &stop, hn);
+        }
+        break;
+      }
+      case 'H': {
+        char hn[HOST_NAME_MAX + 1] = {0};
+        if (gethostname(hn, HOST_NAME_MAX + 1) == 0) {
+          p = expand_substr(prompt, &start, &stop, hn);
+        }
+        break;
+      }
+      case 'n':
+        p = expand_substr(prompt, &start, &stop, "\n");
+        break;
+      case 'u': {
+        struct passwd *pw = getpwuid(getuid());
+        if (pw) {
+          p = expand_substr(prompt, &start, &stop, pw->pw_name);
+        }
+        break;
+      }
+      case 'w': {
+        char const *pwd = vars_get("PWD");
+        char const *home = vars_get("HOME");
+        if (pwd) {
+          if (home) {
+            pwd = remove_prefix(pwd, home);
+            p = expand_substr(prompt, &start, &stop, "~");
+            ++start;
+            if (!p) break;
+          }
+          p = expand_substr(prompt, &start, &stop, pwd);
+        }
+        break;
+      }
+      case '$':
+        if (geteuid() == 0) {
+          p = expand_substr(prompt, &start, &stop, "#");
+        } else {
+          p = expand_substr(prompt, &start, &stop, "$");
+        }
+        break;
+      case '\\':
+        p = expand_substr(prompt, &start, &stop, "\\");
+        break;
+      case '[':
+      case ']':
+        p = expand_substr(prompt, &start, &stop, "");
+        break;
+    }
+    start = stop;
+    if (!p) break;
+  }
+  return p;
 }
