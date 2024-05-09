@@ -110,13 +110,14 @@ static void
 remove_var(char const *name)
 {
   assert(is_valid_varname(name));
-  struct var *vp = var_list;
-  for (; vp; vp = vp->next) {
-    struct var *tmp = vp->next;
-    if (tmp && strcmp(tmp->name, name) == 0) {
-      vp->next = tmp->next;
-      free(tmp->value);
-      free(tmp);
+  struct var **link = &var_list;
+  for (; *link; link = &((*link)->next)) {
+    if (strcmp((*link)->name, name) == 0) {
+      void *tmp = (*link)->next;
+      free((*link)->value);
+      free(*link);
+      *link = tmp;
+      break;
     }
   }
 }

@@ -15,8 +15,7 @@ struct builtin_redir {
  * Yep, C's type system is a doozy! Aren't you glad you don't need to do this
  * yourself? :)
  */
-typedef int (*builtin_fn)(struct command *,
-                          struct builtin_redir const *redir_list);
+typedef int (*builtin_fn)(struct command *, struct builtin_redir const *redir);
 
 /** Look up corresponding builtin function for a given command
  *  Built-ins simulate real programs while running entirely with-
@@ -24,3 +23,4 @@ typedef int (*builtin_fn)(struct command *,
  *  are not possible with separate child processes.
  */
 extern builtin_fn get_builtin(struct command *cmd);
+

@@ -9,15 +9,13 @@
  */
 struct command_list {
   struct command {
-
     /* Assignment name, value pairs.
      * e.g. name=value
      */
-    struct assignment {
+    struct assignment { 
       char *name;
       char *value;
     } **assignments;
-
     size_t assignment_count;
 
     /* Command words
@@ -26,7 +24,8 @@ struct command_list {
     char **words;
     size_t word_count;
 
-    /* I/O redirection operators */
+    /* I/O redirection operators 
+     */
     struct io_redir {
       int io_number; /* Left-hand file descriptor operand  */
 
@@ -44,7 +43,6 @@ struct command_list {
       /* Right-hand filename operand */
       char *filename;
     } **io_redirs;
-
     size_t io_redir_count;
 
     /* The control operator ending this particular command

@@ -89,7 +89,7 @@ builtin_cd(struct command *cmd, struct builtin_redir const *redir_list)
       return -1;
     }
   }
-  /*TODO: handle arguments to cd
+  /*TODO: Implement cd with arguments 
    */
   chdir(target_dir);
   return 0;
@@ -155,7 +155,7 @@ builtin_unset(struct command *cmd, struct builtin_redir const *redir_list)
   return 0;
 }
 
-/** Places the specified bg process back in the foreground
+/** Places the specified (backround) job in the foreground
  *
  * XXX DO NOT MODIFY XXX
  */
@@ -165,7 +165,10 @@ builtin_fg(struct command *cmd, struct builtin_redir const *redir_list)
   jid_t job_id = -1;
   if (cmd->word_count == 1) {
     size_t job_count = jobs_get_joblist_size();
-    if (job_count == 0) return -1;
+    if (job_count == 0) {
+      dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "No jobs\n");
+      return -1;
+    }
     job_id = jobs_get_joblist()[0].jid;
   } else if (cmd->word_count == 2) {
     char *end = cmd->words[1];
@@ -186,12 +189,12 @@ builtin_fg(struct command *cmd, struct builtin_redir const *redir_list)
     return -1;
   }
 
-  gid_t gid = jobs_get_gid(job_id);
-  if (gid < 0) {
+  pid_t pgid = jobs_get_gid(job_id);
+  if (pgid < 0) {
     errno = EINVAL;
     goto err;
   }
-  kill(-gid, SIGCONT);
+  kill(-pgid, SIGCONT);
 
   if (wait_on_fg_job(job_id) < 0) goto err;
 
@@ -232,12 +235,12 @@ builtin_bg(struct command *cmd, struct builtin_redir const *redir_list)
     return -1;
   }
 
-  gid_t gid = jobs_get_gid(job_id);
-  if (gid < 0) {
+  pid_t pgid = jobs_get_gid(job_id);
+  if (pgid < 0) {
     errno = EINVAL;
     goto err;
   }
-  kill(-gid, SIGCONT);
+  kill(-pgid, SIGCONT);
 
   return 0;
 err:
@@ -260,7 +263,7 @@ builtin_jobs(struct command *cmd, struct builtin_redir const *redir_list)
     dprintf(get_pseudo_fd(redir_list, STDERR_FILENO),
             "[%jd] %jd\n",
             (intmax_t)jobs[i].jid,
-            (intmax_t)jobs[i].gid);
+            (intmax_t)jobs[i].pgid);
   }
   return 0;
 }

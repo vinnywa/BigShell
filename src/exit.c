@@ -13,12 +13,15 @@
 void
 bigshell_exit(void)
 {
+  /* Send SIGHUP (Hangup) signal to all jobs */
   size_t job_count = jobs_get_joblist_size();
   struct job const *jobs = jobs_get_joblist();
   for (size_t i = 0; i < job_count; ++i) {
-    gid_t gid = jobs[i].gid;
-    kill(-gid, SIGHUP);
+    pid_t pgid = jobs[i].pgid;
+    kill(-pgid, SIGHUP);
   }
+
+  /* Call associated cleanup routines */
   jobs_cleanup();
   vars_cleanup();
   exit(params.status);

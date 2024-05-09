@@ -8,9 +8,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "expand.h"
 #include "parser.h"
 #include "util/gprintf.h"
 #include "vars.h"
+
+
 
 static void
 command_free(struct command *cmd)
@@ -513,18 +516,40 @@ command_list_parse(struct command_list **cl, FILE *stream)
   (*cl)->command_count = 0;
   (*cl)->commands = 0;
   do {
-    if (isatty(fileno(stdin))) {
+    if (isatty(fileno(stream))) {
+      char const *s = 0;
       if (!line) {
-        char const *s = vars_get("PS1");
+        s = vars_get("PS1");
         if (!s) {
           if (getuid() == 0) s = "#";
           else s = "$";
         }
-        fputs(s, stderr);
       } else {
-        char const *s = vars_get("PS2");
+        s = vars_get("PS2");
         if (!s) s = ">";
-        fputs(s, stderr);
+      }
+      assert(s);
+      char *s_copy = strdup(s);
+      if (s_copy) {
+        if (expand_prompt(&s_copy)) {
+          char prefix[] = "\n=== [BIGSHELL] ===";
+          write(fileno(stream), prefix, sizeof prefix - 1);
+          write(fileno(stream), s_copy, strlen(s_copy));
+        }
+      }
+      free(s_copy);
+    } else {
+      /* isatty() reports no-tty by setting errno to ENOTTY, so
+       * we need to ignore that and continue
+       *
+       * This is the case for a non-interactive terminal (e.g. script)
+       */
+      switch (errno) {
+        case ENOTTY:
+          errno = 0;
+          break;
+        default:
+          goto err; /* EBADF, etc. */
       }
     }
     line_length = getline(&line, &n, stream);

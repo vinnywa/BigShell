@@ -86,5 +86,4 @@ signal_restore(void)
    * */
   errno = ENOSYS; /* not implemented */
   return -1;
-  return 0;
 }
