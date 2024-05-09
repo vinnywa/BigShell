@@ -42,18 +42,8 @@ expand_command_words(struct command *cmd)
   for (size_t i = 0; i < cmd->word_count; ++i) {
     expand(&cmd->words[i]);
   }
-<<<<<<< HEAD
-  /* TODO Assignments */
-  for (size_t i = 0; i < cmd->assignment_count; ++i) {
-    expand(&cmd->assignments[i]->value);
-  }
-=======
   /* TODO Assignment values */
->>>>>>> 6ebd3a9c16784c9e1132cfb277ea0df5ead71c36
   /* TODO I/O Filenames */
-  for (size_t i = 0; i < cmd->io_redir_count; i++) {
-    expand(&cmd->io_redirs[i]->filename);
-  }
   return 0;
 }
 
@@ -71,15 +61,7 @@ do_variable_assignment(struct command const *cmd, int export_all)
   for (size_t i = 0; i < cmd->assignment_count; ++i) {
     struct assignment *a = cmd->assignments[i];
     /* TODO Assign */
-    setenv(a->name, a->value, 1);
     /* TODO Export (if export_all != 0) */
-    if (export_all != 0) {
-      char *export_cmd = malloc(strlen(a->name) + 7);
-      sprintf(export_cmd, "export %s", a->name);
-      system(export_cmd);
-      free(export_cmd);
-    }
-    
   }
   return 0;
 }
@@ -119,23 +101,20 @@ get_io_flags(enum io_operator io_op)
   switch (io_op) {
     case OP_LESSAND: /* <& */
     case OP_LESS:    /* < */
-      flags = O_RDONLY;     /* TODO */
+      flags = 0;     /* TODO */
       break;
     case OP_GREATAND: /* >& */
     case OP_GREAT:    /* > */
-      flags = O_WRONLY | O_CREAT;      /* TODO */
-      if (io_op == OP_GREAT) {
-        flags |= O_EXCL; 
-      }
+      flags = 0;      /* TODO */
       break;
     case OP_DGREAT: /* >> */
-      flags = O_WRONLY | O_CREAT | O_APPEND;    /* TODO */
+      flags = 0;    /* TODO */
       break;
     case OP_LESSGREAT: /* <> */
-      flags = O_RDWR;       /* TODO */
+      flags = 0;       /* TODO */
       break;
     case OP_CLOBBER: /* >| */
-      flags = O_WRONLY | O_CREAT | O_TRUNC;     /* TODO */
+      flags = 0;     /* TODO */
       break;
   }
   return flags;
@@ -156,11 +135,7 @@ move_fd(int src, int dst)
 {
   if (src == dst) return dst;
   /* TODO move src to dst */
-  if (dup2(src, dst) == -1) {
-    return -1;
-  }
   /* TODO close src */
-  close(src);
   return dst;
 }
 
@@ -310,10 +285,6 @@ do_io_redirects(struct command *cmd)
          *
          * XXX What is n? Look for it in `struct io_redir->???` (parser.h)
          */
-        if (close(r->io_number) == -1) {
-          perror("close");
-          goto err;
-        }
       } else {
         /* The filename is interpreted as a file descriptor number to
          * redirect to. For example, 2>&1 duplicates file descriptor 1
@@ -335,10 +306,6 @@ do_io_redirects(struct command *cmd)
                                  downcasting */
         ) {
           /* TODO duplicate src to dst. */
-          if (dup(src) == -1) {
-            perror("dup");
-            goto err;
-          }
         } else {
           /* XXX Syntax error--(not a valid number)--we can "recover" by
            * attempting to open a file instead. That's what bash does.
@@ -357,21 +324,9 @@ do_io_redirects(struct command *cmd)
        * XXX Note: you can supply a mode to open() even if you're not creating a
        * file. it will just ignore that argument.
        */
-      int fd = open(r->filename, flags);
-      if (fd == -1) {
-        perror("open");
-        goto err;
-      }
 
       /* TODO Move the opened file descriptor to the redirection target */
       /* XXX use move_fd() */
-      int redir_target = r->io_number;
-      if (move_fd(fd, redir_target) == -1) {
-        perror("move_fd");
-        close(fd);
-        goto err;
-      }
-      close(fd);
     }
     if (0) {
     err: /* TODO Anything that can fail should jump here. No silent errors!!! */
@@ -426,15 +381,9 @@ run_command_list(struct command_list *cl)
     int stdin_override = pipeline_fds[STDIN_FILENO];
 
     /* IF we are a pipeline command, create a pipe for our stdout */
-    if (is_pl) {
+    if (/* TODO */ 0) {
       /* TODO create a new pipe with pipeline_fds */
-      int pipe_fds[2];
-      if(pipe(pipe_fds) < 0) {
-        perror("pipe");
-          exit(EXIT_FAILURE);
-      }
-      pipeline_fds[1] = pipe_fds[1]; /* causes stdout to point to the write or right end of the pipe */
-      stdin_override = pipe_fds[0];  /* next cmmd stdin comes from the READ end */
+      /* XXX man 2 pipe */
     } else {
       pipeline_fds[0] = -1;
       pipeline_fds[1] = -1;
@@ -452,13 +401,8 @@ run_command_list(struct command_list *cl)
     /* Fork if:
      *   Not a builtin, OR,
      *   Is a builtin, but isn't a foreground command */
-    if (/* TODO */ !builtin || !is_fg) {
+    if (/* TODO */ 1) {
       /* TODO */
-      child_pid = fork();
-      if(child_pid == -1) {
-        perror("fork");
-        return -1;
-      }
     }
 
     if (child_pid == 0) {
@@ -514,9 +458,7 @@ run_command_list(struct command_list *cl)
         /* Redirect the two standard streams overrides IF they are not set to -1
          *   XXX This sets up pipeline redirection */
         /* TODO move stdin_override  -> STDIN_FILENO  if stdin_override >= 0 */
-        if (stdin_override >= 0) dup2(stdin_override, STDIN_FILENO);
         /* TODO move stdout_override -> STDOUT_FILENO if stdin_override >= 0 */
-        if (stdout_override >= 0) dup2(stdout_override, STDOUT_FILENO);
 
         /* Now handle the remaining redirect operators from the command. */
         if (do_io_redirects(cmd) < 0) err(1, 0);
@@ -534,11 +476,9 @@ run_command_list(struct command_list *cl)
          *  XXX Carefully review man 3 exec. Choose the correct function that:
          *    1) Takes an array of points to a null-terminated array of strings
          *    2) Searches for executable files in the PATH environment variable
-         * 
+         *
          *  XXX Note: cmd->words is a null-terminated array of strings. Nice!
          */
-        execvp(cmd->words[0], cmd->words); 
-        perror("execvp failed"); /* only returns on error */
 
         err(127, 0); /* Exec failure -- why might this happen? */
         assert(0);   /* UNREACHABLE -- This should never be reached ABORT! */
@@ -553,21 +493,6 @@ run_command_list(struct command_list *cl)
      * create that here, or add the current child to an existing process group
      */
 
-<<<<<<< HEAD
-    /* XXX initially pipeline_gid is set to -1 (unset) */
-    if (pipeline_gid < 0) {
-      /* TODO child will become process group leader. Assign it to its own
-       * process group, where its pid equals its process group id. See
-       * SETPGID(3) */
-      pipeline_gid = child_pid;
-      /* TODO Record process group id with pipeline_gid. */
-      setpgid(child_pid, pipeline_gid);
-      /* XXX NOTE: pay very close attention to the return value of setpgid.
-       * You'll probably want to call getpgid()... :) */
-
-      /* TODO Add the new group id to the job list. See jobs.h */
-      jid_t job_id = jobs_add(pipeline_gid);
-=======
     /* XXX initially pipeline_gid is set to 0 (unset)
      *
      * Thoroughly read the man page for setpgid(3) and getpgid(3)
@@ -584,7 +509,6 @@ run_command_list(struct command_list *cl)
       pipeline_pgid = child_pid;
       pipeline_jid = jobs_add(pipeline_pgid);
       if (pipeline_jid < 0) goto err;
->>>>>>> 6ebd3a9c16784c9e1132cfb277ea0df5ead71c36
     }
 
     /* Whether the parent waits on the child is dependent on the control
@@ -604,16 +528,10 @@ run_command_list(struct command_list *cl)
          * message when they spawn.
          * "[<JOBID>] <GROUPID>\n"
          */
-<<<<<<< HEAD
-        jid_t job_id = jobs_get_jid(pipeline_gid);
-        
-        fprintf(stderr, "[%jd] %jd\n", (intmax_t)-1, (intmax_t)-1);
-=======
         fprintf(stderr,
                 "[%jd] %jd\n",
                 (intmax_t)pipeline_jid,
                 (intmax_t)pipeline_pgid);
->>>>>>> 6ebd3a9c16784c9e1132cfb277ea0df5ead71c36
       }
       params.status =
           0; /* XXX Ignore the spec--this is correct for background jobs */
