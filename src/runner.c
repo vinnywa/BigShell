@@ -67,7 +67,15 @@ do_variable_assignment(struct command const *cmd, int export_all)
   for (size_t i = 0; i < cmd->assignment_count; ++i) {
     struct assignment *a = cmd->assignments[i];
     /* TODO Assign */
+    setenv(a->name, a->value, 1);
     /* TODO Export (if export_all != 0) */
+    if (export_all != 0) {
+      char *export_cmd = malloc(strlen(a->name) + 7);
+      sprintf(export_cmd, "export %s", a->name);
+      system(export_cmd);
+      free(export_cmd);
+    }
+    
   }
   return 0;
 }
@@ -144,7 +152,11 @@ move_fd(int src, int dst)
 {
   if (src == dst) return dst;
   /* TODO move src to dst */
+  if (dup2(src, dst) == -1) {
+    return -1;
+  }
   /* TODO close src */
+  close(src);
   return dst;
 }
 
@@ -296,6 +308,10 @@ do_io_redirects(struct command *cmd)
          *
          * XXX What is n? Look for it in `struct io_redir->???` (parser.h)
          */
+        if (close(r->io_number) == -1) {
+          perror("close");
+          goto err;
+        }
       } else {
         /* The filename is interpreted as a file descriptor number to
          * redirect to. For example, 2>&1 duplicates file descriptor 1
@@ -317,6 +333,10 @@ do_io_redirects(struct command *cmd)
                                  downcasting */
         ) {
           /* TODO duplicate src to dst. */
+          if (dup(src) == -1) {
+            perror("dup");
+            goto err;
+          }
         } else {
           /* XXX Syntax error--(not a valid number)--we can "recover" by
            * attempting to open a file instead. That's what bash does.
@@ -335,9 +355,21 @@ do_io_redirects(struct command *cmd)
        * XXX Note: you can supply a mode to open() even if you're not creating a
        * file. it will just ignore that argument.
        */
+      int fd = open(r->filename, flags);
+      if (fd == -1) {
+        perror("open");
+        goto err;
+      }
 
       /* TODO Move the opened file descriptor to the redirection target */
       /* XXX use move_fd() */
+      int redir_target = r->io_number;
+      if (move_fd(fd, redir_target) == -1) {
+        perror("move_fd");
+        close(fd);
+        goto err;
+      }
+      close(fd);
     }
     if (0) {
     err: /* TODO Anything that can fail should jump here. No silent errors!!! */
