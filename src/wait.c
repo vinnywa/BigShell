@@ -19,10 +19,18 @@ wait_on_fg_gid(pid_t pgid)
   /* TODO send the "continue" signal to the process group 'pgid'
    * XXX review kill(2)
    */
+  if (kill(-pgid, SIGCONT) == -1) {
+    perror("Failed to send SIGCONT to the process group");
+    return -1;
+  }
 
   if (isatty(STDIN_FILENO)) {
     /* TODO make 'pgid' the foreground process group
      * XXX review tcsetpgrp(3) */
+    if (tcsetpgrp(STDIN_FILENO, pgid) == -1) {
+      perror("Error: failed to set fgid");
+      return -1;
+    }
   } else {
     switch (errno) {
       /* isatty() reports no-tty by setting errno to ENOTTY (and returning 0),
@@ -54,7 +62,7 @@ wait_on_fg_gid(pid_t pgid)
   for (;;) {
     /* Wait on ALL processes in the process group 'pgid' */
     int status;
-    pid_t res = waitpid(/* TODO */ 0, &status, 0);
+    pid_t res = waitpid(/* TODO */ -pgid, &status, 0);
     if (res < 0) {
       /* Error occurred (some errors are ok, see below)
        *
@@ -65,13 +73,16 @@ wait_on_fg_gid(pid_t pgid)
         errno = 0;
         if (WIFEXITED(last_status)) {
           /* TODO set params.status to the correct value */
+          params.status = WEXITSTATUS(last_status);
         } else if (WIFSIGNALED(last_status)) {
           /* TODO set params.status to the correct value */
+          params.status = WTERMSIG(last_status);
         }
 
         /* TODO remove the job for this group from the job list
          *  see jobs.h
          */
+        jobs_remove_gid(pgid);
         goto out;
       }
       goto err; /* An actual error occurred */
@@ -85,7 +96,7 @@ wait_on_fg_gid(pid_t pgid)
     /* TODO handle case where a child process is stopped
      *  The entire process group is placed in the background
      */
-    if (/* TODO */ 0) {
+    if (/* TODO */ WIFSTOPPED(status)) {
       fprintf(stderr, "[%jd] Stopped\n", (intmax_t)jobs_get_jid(pgid));
       goto out;
     }
@@ -106,6 +117,9 @@ err:
      * Note: this will cause bigshell to receive a SIGTTOU signal.
      *       You need to also finish signal.c to have full functionality here
      */
+    if (tcsetpgrp(STDIN_FILENO, getpid()) == -1) {
+      perror("Failed to make bigshell the fg process again");
+    }
   } else {
     switch (errno) {
       case ENOTTY:
@@ -150,9 +164,9 @@ wait_on_bg_jobs()
         if (errno == ECHILD) {
           /* No children -- print exit status based on last loop iteration's status  */
           errno = 0;
-          if (WIFEXITED(status)) {
+          if (WIFEXITED(last_status)) {
             fprintf(stderr, "[%jd] Done\n", (intmax_t)jid);
-          } else if (WIFSIGNALED(status)) {
+          } else if (WIFSIGNALED(last_status)) {
             fprintf(stderr, "[%jd] Terminated\n", (intmax_t)jid);
           }
           jobs_remove_gid(pgid);

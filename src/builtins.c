@@ -91,7 +91,11 @@ builtin_cd(struct command *cmd, struct builtin_redir const *redir_list)
   }
   /*TODO: Implement cd with arguments 
    */
-  chdir(target_dir);
+  target_dir = cmd->words[1];
+  if (chdir(target_dir) != 0) {
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: %s: %s\n", target_dir, strerror(errno));
+    return -1;
+  }
   return 0;
 }
 
@@ -110,8 +114,26 @@ static int
 builtin_exit(struct command *cmd, struct builtin_redir const *redir_list)
 {
   /* TODO: Set params.status to the appropriate value before exiting */
+
+  // too many args provided
+  if (cmd->word_count > 2) {
+    errno = EINVAL;
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: \'%s': %s\n", cmd->words[2], strerror(errno));
+    return -1;
+  } else if (cmd->word_count == 2) {
+    char *end;
+    long exit_status = strtol(cmd->words[1], &end, 10); //declare as long for check recast later
+    //check if argument is non-numeric
+    if (*end != '\0') {
+      errno = EINVAL;
+      dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: \'%s': %s\n", cmd->words[1], strerror(errno));
+      return -1;
+    }
+    //update exit status 
+    params.status = (int)exit_status;
+  }
   bigshell_exit();
-  return -1;
+  return 0;
 }
 
 /** exports variables to the environment
@@ -151,6 +173,7 @@ builtin_unset(struct command *cmd, struct builtin_redir const *redir_list)
 {
   for (size_t i = 1; i < cmd->word_count; ++i) {
     /* TODO: Unset variables */
+    vars_unset(cmd->words[i]);
   }
   return 0;
 }

@@ -69,7 +69,7 @@ jobs_get_gid(jid_t jid)
 int
 jobs_remove_gid(pid_t pgid)
 {
-  for (size_t i = 0; i < jobs_joblist_size;) {
+  for (size_t i = 0; i < jobs_joblist_size; ++i) {
     if (jobs_joblist[i].pgid == pgid) {
       memmove(&jobs_joblist[i],
               &jobs_joblist[i + 1],
@@ -85,8 +85,8 @@ jobs_remove_gid(pid_t pgid)
         free(jobs_joblist);
         jobs_joblist = 0;
       }
+      return 0;
     }
-    if (++i == jobs_joblist_size) return -1;
   }
   return -1; /* DNE */
 }
