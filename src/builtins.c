@@ -88,14 +88,27 @@ builtin_cd(struct command *cmd, struct builtin_redir const *redir_list)
       dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: HOME not set\n");
       return -1;
     }
-  }
-  /*TODO: Implement cd with arguments 
-   */
-  target_dir = cmd->words[1];
-  if (chdir(target_dir) != 0) {
-    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: %s: %s\n", target_dir, strerror(errno));
+  } else if (cmd->word_count == 2) {
+    /*TODO: Implement cd with arguments*/ 
+    target_dir = cmd->words[1];
+  } else {
+    errno = EINVAL;
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: `%s': %s\n", cmd->words[2], strerror(errno));
     return -1;
   }
+  /* Finally change directory */
+  if (chdir(target_dir) != 0) {
+    errno = EINVAL;
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: `%s': %s\n", target_dir, strerror(errno));
+    return -1;
+  }
+  /*
+  target_dir = cmd->words[1];
+  if (chdir(target_dir) < 0) {
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: %s: %s\n", target_dir, strerror(errno));
+    return -1;
+  } */
+  vars_set(target_dir);
   return 0;
 }
 
@@ -118,7 +131,7 @@ builtin_exit(struct command *cmd, struct builtin_redir const *redir_list)
   // too many args provided
   if (cmd->word_count > 2) {
     errno = EINVAL;
-    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: \'%s': %s\n", cmd->words[2], strerror(errno));
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: `%s': %s\n", cmd->words[2], strerror(errno));
     return -1;
   } else if (cmd->word_count == 2) {
     char *end;
@@ -126,7 +139,7 @@ builtin_exit(struct command *cmd, struct builtin_redir const *redir_list)
     //check if argument is non-numeric
     if (*end != '\0') {
       errno = EINVAL;
-      dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: \'%s': %s\n", cmd->words[1], strerror(errno));
+      dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "exit: `%s': %s\n", cmd->words[1], strerror(errno));
       return -1;
     }
     //update exit status 
