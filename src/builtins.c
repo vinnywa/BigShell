@@ -102,13 +102,24 @@ builtin_cd(struct command *cmd, struct builtin_redir const *redir_list)
     dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: `%s': %s\n", target_dir, strerror(errno));
     return -1;
   }
-  /*
-  target_dir = cmd->words[1];
-  if (chdir(target_dir) < 0) {
-    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "cd: %s: %s\n", target_dir, strerror(errno));
+
+  /* get current working directory and update PWD environment var */
+  char *cwd = getcwd(NULL, 0);
+  if (cwd != NULL) {
+    if (vars_set("PWD", cwd) != 0) {
+      errno = EINVAL;
+      dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "PWD: %s\n", strerror(errno));
+      free(cwd);
+      return -1;
+    }
+    free(cwd);
+  } else {
+    errno = EINVAL;
+    dprintf(get_pseudo_fd(redir_list, STDERR_FILENO), "PWD: %s\n", strerror(errno));
     return -1;
-  } */
-  vars_set(target_dir);
+  }
+
+  //vars_set("PWD", target_dir);
   return 0;
 }
 
