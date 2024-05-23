@@ -66,14 +66,22 @@ do_variable_assignment(struct command const *cmd, int export_all)
 {
   for (size_t i = 0; i < cmd->assignment_count; ++i) {
     struct assignment *a = cmd->assignments[i];
-    /* TODO Assign */
-    setenv(a->name, a->value, 1);
+    
+    /* TODO Assign 
+     *
+     * validation occurs in vars_set
+     * */
+    if (vars_set(a->name, a->value) != 0) {
+      perror("failed to assign variable");
+      return -1;
+    }
+
     /* TODO Export (if export_all != 0) */
     if (export_all != 0) {
-      char *export_cmd = malloc(strlen(a->name) + 7);
-      sprintf(export_cmd, "export %s", a->name);
-      system(export_cmd);
-      free(export_cmd);
+      if (vars_export(a->name) != 0) {
+        perror("failed to export variable");
+        return -1; 
+      }
     }
   }
   return 0;
