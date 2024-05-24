@@ -426,15 +426,12 @@ run_command_list(struct command_list *cl)
     /* IF we are a pipeline command, create a pipe for our stdout */
     if (/* TODO */ is_pl) {
       /* TODO create a new pipe with pipeline_fds */
-      int new_pipeline_fds[2];
-      if(pipe(new_pipeline_fds) < 0) {
-        perror("pipe");
-        exit(EXIT_FAILURE);
-      }
-      pipeline_fds[1] = new_pipeline_fds[1];
-      stdin_override = new_pipeline_fds[0];
-
       /* XXX man 2 pipe */
+      if(pipe(pipeline_fds) < 0) {
+        perror("pipe");
+        goto err;
+      }
+
     } else {
       pipeline_fds[0] = -1;
       pipeline_fds[1] = -1;
@@ -457,7 +454,7 @@ run_command_list(struct command_list *cl)
       child_pid = fork();
       if(child_pid == -1) {
         perror("fork");
-        return -1;
+        goto err;
       }
     }
 
