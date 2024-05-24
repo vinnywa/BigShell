@@ -314,7 +314,6 @@ do_io_redirects(struct command *cmd)
          * XXX What is n? Look for it in `struct io_redir->???` (parser.h)
          */
         if (close(r->io_number) == -1) {
-          perror("close");
           goto err;
         }
       } else {
@@ -338,8 +337,7 @@ do_io_redirects(struct command *cmd)
                                  downcasting */
         ) {
           /* TODO duplicate src to dst. */
-          if (dup(src) == -1) {
-            perror("dup");
+          if (dup2(src, r->io_number) == -1) {
             goto err;
           }
         } else {
@@ -360,24 +358,20 @@ do_io_redirects(struct command *cmd)
        * XXX Note: you can supply a mode to open() even if you're not creating a
        * file. it will just ignore that argument.
        */
-      int fd = open(r->filename, flags);
+      int fd = open(r->filename, flags, 0644);
       if (fd == -1) {
-        perror("open");
         goto err;
       }
-
       /* TODO Move the opened file descriptor to the redirection target */
       /* XXX use move_fd() */
-      int redir_target = r->io_number;
-      if (move_fd(fd, redir_target) == -1) {
-        perror("move_fd");
+      if (move_fd(fd, r->io_number) == -1) {
         close(fd);
         goto err;
-       }
+      }
     } 
     if (0) {
     err: /* TODO Anything that can fail should jump here. No silent errors!!! */
-      warn(0);
+      warn("Error: ");
       status = -1;
       errno = 0;
     }
