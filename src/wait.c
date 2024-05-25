@@ -76,7 +76,7 @@ wait_on_fg_gid(pid_t pgid)
           params.status = WEXITSTATUS(last_status);
         } else if (WIFSIGNALED(last_status)) {
           /* TODO set params.status to the correct value */
-          params.status = WTERMSIG(last_status);
+          params.status = 128+WTERMSIG(last_status);
         }
 
         /* TODO remove the job for this group from the job list
@@ -119,6 +119,7 @@ err:
      */
     if (tcsetpgrp(STDIN_FILENO, getpid()) == -1) {
       perror("Failed to make bigshell the fg process again");
+      retval = -1;
     }
   } else {
     switch (errno) {
@@ -172,6 +173,7 @@ wait_on_bg_jobs()
           jobs_remove_gid(pgid);
           job_count = jobs_get_joblist_size();
           jobs = jobs_get_joblist();
+          break;
         }
         return -1; /* Other errors are not ok */
       }

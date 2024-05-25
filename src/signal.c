@@ -40,16 +40,11 @@ signal_init(void)
    * e.g. sigaction(SIGNUM, &new_handler, &saved_old_handler);
    *
    * */
-  struct sigaction sa;
-  sa.sa_handler = SIG_IGN;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = 0;
+  if (sigaction(SIGTSTP, &ignore_action, &old_sigtstp) == -1) return -1;
 
-  if (sigaction(SIGTSTP, &sa, &old_sigtstp) == -1) return -1;
-
-  if (sigaction(SIGINT, &sa, &old_sigint) == -1) return -1;
+  if (sigaction(SIGINT, &interrupt_action, &old_sigint) == -1) return -1;
   
-  if (sigaction(SIGTTOU, &sa, &old_sigttou) == -1) return -1;
+  if (sigaction(SIGTTOU, &ignore_action, &old_sigttou) == -1) return -1;
   
   return 0;
 }

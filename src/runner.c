@@ -545,9 +545,9 @@ run_command_list(struct command_list *cl)
          *  XXX Note: cmd->words is a null-terminated array of strings. Nice!
          */
         execvp(cmd->words[0], cmd->words);
-        perror("execvp failed");
-
+        // perror("execvp failed");
         err(127, 0); /* Exec failure -- why might this happen? */
+
         assert(0);   /* UNREACHABLE -- This should never be reached ABORT! */
       }
     }
