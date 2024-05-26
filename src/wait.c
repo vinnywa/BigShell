@@ -156,7 +156,7 @@ wait_on_bg_jobs()
        * XXX make sure to do a nonblocking wait!
        */
       int status;
-      pid_t pid = waitpid(-pgid, &status, WUNTRACED);
+      pid_t pid = waitpid(-1, &status, WNOHANG);
       if (pid == 0) {
         /* Unwaited children that haven't exited */
         break;
