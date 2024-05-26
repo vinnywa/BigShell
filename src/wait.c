@@ -1,3 +1,4 @@
+// Collaborator: Vaughn Blandy
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <err.h>
@@ -20,7 +21,7 @@ wait_on_fg_gid(pid_t pgid)
    * XXX review kill(2)
    */
   if (kill(-pgid, SIGCONT) == -1) {
-    perror("Failed to send SIGCONT to the process group");
+    perror("SIGCONT -> pgid failed");
     return -1;
   }
 
@@ -28,7 +29,7 @@ wait_on_fg_gid(pid_t pgid)
     /* TODO make 'pgid' the foreground process group
      * XXX review tcsetpgrp(3) */
     if (tcsetpgrp(STDIN_FILENO, pgid) == -1) {
-      perror("Error: failed to set fgid");
+      perror("Failed to make pgid the fgpg");
       return -1;
     }
   } else {

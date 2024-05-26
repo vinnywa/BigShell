@@ -1,3 +1,4 @@
+// Collaborator: Vaughn Blandy
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <err.h>
@@ -9,7 +10,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <wait.h>
-
 #include "builtins.h"
 #include "exit.h"
 #include "expand.h"
@@ -72,14 +72,14 @@ do_variable_assignment(struct command const *cmd, int export_all)
      * validation occurs in vars_set
      * */
     if (vars_set(a->name, a->value) != 0) {
-      perror("failed to assign variable");
+      perror("vars_set");
       return -1;
     }
 
     /* TODO Export (if export_all != 0) */
     if (export_all != 0) {
       if (vars_export(a->name) != 0) {
-        perror("failed to export variable");
+        perror("vars_export");
         return -1; 
       }
     }
@@ -127,6 +127,7 @@ get_io_flags(enum io_operator io_op)
     case OP_GREATAND: /* >& */
     case OP_GREAT:    /* > */
       flags = O_WRONLY | O_CREAT;      /* TODO */
+      /* if > O_EXCL ensures the file doesn't alr exist */
       if(io_op == OP_GREAT) {
         flags |= O_EXCL;
       }
@@ -371,7 +372,7 @@ do_io_redirects(struct command *cmd)
     } 
     if (0) {
     err: /* TODO Anything that can fail should jump here. No silent errors!!! */
-      warn("Error: ");
+      warn("Redirection Error ");
       status = -1;
       errno = 0;
     }
@@ -428,7 +429,7 @@ run_command_list(struct command_list *cl)
       /* TODO create a new pipe with pipeline_fds */
       /* XXX man 2 pipe */
       if(pipe(pipeline_fds) < 0) {
-        perror("pipe");
+        perror("pipe()");
         goto err;
       }
 
@@ -453,7 +454,7 @@ run_command_list(struct command_list *cl)
       /* TODO */
       child_pid = fork();
       if(child_pid == -1) {
-        perror("fork");
+        perror("fork()");
         goto err;
       }
     }
@@ -520,7 +521,7 @@ run_command_list(struct command_list *cl)
         /* TODO move stdout_override -> STDOUT_FILENO if stdin_override >= 0 */
         if (stdout_override != -1) {
           if (dup2(stdout_override, STDOUT_FILENO) < 0) {
-            perror("dup2 stdout failed");
+            perror("dup2() stdout failed");
             exit(EXIT_FAILURE);
           }
         }
@@ -545,9 +546,7 @@ run_command_list(struct command_list *cl)
          *  XXX Note: cmd->words is a null-terminated array of strings. Nice!
          */
         execvp(cmd->words[0], cmd->words);
-        // perror("execvp failed");
         err(127, 0); /* Exec failure -- why might this happen? */
-
         assert(0);   /* UNREACHABLE -- This should never be reached ABORT! */
       }
     }
